@@ -145,4 +145,4 @@ main = do
         clientOpts.clientPort
         clientOpts.clientInput
 
-  putStrLn "\n[+] Operación completada exitosamente"
+  putStrLn "\n[+] Operación finalizada"

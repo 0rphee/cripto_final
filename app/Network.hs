@@ -13,8 +13,6 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 import Data.Foldable (for_)
-import qualified Data.Text.Encoding as TE
-import qualified Data.Text.IO as T
 import qualified DiffieHellman as DH
 import qualified Network.Socket as Socket
 import qualified Network.Socket.ByteString as SocketBS
@@ -134,14 +132,8 @@ handleConnection conn mOutputFile = do
     saveOutput :: ByteString -> IO ()
     saveOutput content = do
       putStrLn "[*] Contenido descifrado:"
-      case TE.decodeUtf8' content of
-        Left (_) -> do
-          putStrLn "[!] ATENCIÓN: El contenido descifrado NO es texto UTF-8 válido."
-          putStrLn "[*] Se mostrarán solo los primeros 80 bytes como Bytes (raw):"
-          C8.putStrLn (BS.take 80 content)
-        Right (text) -> do
-          putStrLn "[*] El contenido es texto UTF-8 válido. Mostrando:"
-          T.putStrLn text
+      putStrLn "[*] Se mostrarán solo los primeros 80 bytes:"
+      C8.putStrLn (BS.take 80 content)
       for_ mOutputFile $ \path -> do
         BS.writeFile path content
         putStrLn $ "[*] Archivo guardado exitosamente en: " ++ path
@@ -156,35 +148,29 @@ runClient host port inputPath = Socket.withSocketsDo $ do
 
   bracket (openClient addr) Socket.close $ \sock -> do
     putStrLn $ "[*] Conectado a " ++ host ++ ":" ++ port
-
     -- 1. Generar claves DH del cliente
     dhParams <- DH.generateDHParams
     (cliPriv, cliPub) <- DH.generateKeyPair dhParams
-
     -- 2. Enviar ClientHello
     putStrLn "[*] Enviando ClientHello..."
     sendMessage sock (P.HandshakeMsgWrapper (P.ClientHello cliPub))
-
     -- 3. Esperar ServerHello
     msg <- recvMessage sock
     case msg of
       Right (P.HandshakeMsgWrapper (P.ServerHello srvPub)) -> do
         putStrLn "[*] ServerHello recibido."
-
         -- 4. Calcular secreto compartido y clave DES
         let secret = DH.computeSharedSecret dhParams cliPriv srvPub
         let desKey = integerToDESKey secret
         putStrLn "[*] Handshake completado. Iniciando transmisión cifrada..."
-
         -- 5. Leer, cifrar y enviar archivo
         content <- BS.readFile inputPath
         putStrLn $ "[*] Leyendo archivo (" ++ show (BS.length content) ++ " bytes)"
-
         let encrypted = DES.desEncrypt desKey content
         sendMessage sock (P.EncryptedData encrypted)
+        putStrLn $ "[*] Archivo enviado"
         sendMessage sock P.EndOfTransmission
-
-        putStrLn "[*] Archivo enviado."
+        putStrLn "[*] Conexión finalizada."
       Right _ -> putStrLn "[!] Error: Se esperaba ServerHello"
       Left err -> putStrLn $ "[!] Error de red: " ++ err
 
