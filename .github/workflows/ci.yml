@@ -44,17 +44,30 @@ jobs:
           echo "exe=$EXE" >> "$GITHUB_OUTPUT"
           echo "Ejecutable encontrado en: $EXE"
 
+      - name: Create and Push Commit Tag
+        id: create_tag
+        run: |
+          # Usa el SHA corto del commit (primeros 7 caracteres) para asegurar unicidad.
+          # Ejemplo: 'commit-1a2b3c4'
+          TAG_NAME="commit-${GITHUB_SHA::7}"
+          echo "Creando tag único para el commit: $TAG_NAME"
+          # Crear el tag local y subirlo al repositorio
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
+          # Guardar el nombre del tag para usarlo en la Release
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+        shell: bash
+
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
           # El archivo a subir como asset de la Release
           files: ${{ steps.findexe.outputs.exe }}
-          # Usa el nombre del tag como el nombre de la Release
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body: "Ejecutable compilado de DES/DH para Linux (Ubuntu/x86_64)."
+          tag_name: ${{ steps.create_tag.outputs.tag_name }}
+          name: Commit Release - ${{ steps.create_tag.outputs.tag_name }}
+          body: "Ejecutable compilado automáticamente en cada commit (${{ github.sha }})."
           draft: false
-          prerelease: false
+          prerelease: true # Recomendado para releases por commit
 
       - name: Upload executable (Internal Artifact)
         uses: actions/upload-artifact@v4
