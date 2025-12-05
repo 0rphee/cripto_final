@@ -1,6 +1,9 @@
 name: Build and Release
 
 on:
+  push:
+    branches:
+      - "main"
   workflow_dispatch:
 jobs:
   build:
@@ -26,8 +29,8 @@ jobs:
           enable-stack: false
       - run: cabal update
 
-      - name: Build (with Stripping)
-        run: cabal build --enable-executable-stripping
+      - name: Build (Static Link & Stripping)
+        run: cabal build --enable-executable-static --enable-executable-stripping
 
       - name: Find executable
         id: findexe
