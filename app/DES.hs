@@ -12,6 +12,8 @@ module DES
   )
 where
 
+-- Necesario para foldl' sobre listas de subclaves
+import Data.Bit (Bit (..), unBit) -- USANDO DATA.BIT
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -19,8 +21,8 @@ import Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as V
 import Data.Word (Word8)
 
--- La clave DES ahora es un Vector Unboxed de Bool
-type DESKey = Vector Bool
+-- La clave DES ahora es un Vector Unboxed de Bit (más eficiente en espacio)
+type DESKey = Vector Bit
 
 -- =========================================================================
 -- TABLAS (Permutaciones y S-Boxes) - Ahora son Vector Int
@@ -164,43 +166,42 @@ shiftSchedule = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1]
 -- =========================================================================
 
 -- Convertir byte a Vector de bits
-byteToBitsV :: Word8 -> Vector Bool
-byteToBitsV w = V.fromList [testBit w (7 - i) | i <- [0 .. 7]]
+byteToBitsV :: Word8 -> Vector Bit
+byteToBitsV w = V.fromList [Bit (testBit w (7 - i)) | i <- [0 .. 7]]
 
 -- Convertir Vector de bits a byte
-bitsToWord8V :: Vector Bool -> Word8
+bitsToWord8V :: Vector Bit -> Word8
 bitsToWord8V bits = V.foldl' setBitAt 0 (V.zip (V.fromList [7, 6 .. 0]) bits)
   where
-    setBitAt w (i, True) = setBit w i
-    setBitAt w (_, False) = w
+    setBitAt w (i, b) = if unBit b then setBit w i else w
 
 -- Aplicar permutación: selecciona bits usando indexación rápida V.!
-permute :: Vector Int -> Vector Bool -> Vector Bool
+permute :: Vector Int -> Vector Bit -> Vector Bit
 permute table bits = V.map (\i -> bits V.! (i - 1)) table
 
 -- Rotar bits a la izquierda
-rotateLeft :: Int -> Vector Bool -> Vector Bool
+rotateLeft :: Int -> Vector Bit -> Vector Bit
 rotateLeft n bits = V.drop n bits V.++ V.take n bits
 
 -- Dividir un vector en trozos de tamaño n
-chunksOfV :: Int -> Vector Bool -> [Vector Bool]
+chunksOfV :: Int -> Vector Bit -> [Vector Bit]
 chunksOfV n v
   | V.null v = []
   | otherwise =
       let (chunk, rest) = V.splitAt n v
-       in chunk : chunksOfV n rest
+      in chunk : chunksOfV n rest
 
--- Conversión de Vector Bool a Int (Necesario para S-Boxes)
-boolToIntV :: Vector Bool -> Int
-boolToIntV v = V.foldl' (\acc b -> acc * 2 + if b then 1 else 0) 0 v
+-- Conversión de Vector Bit a Int (Necesario para S-Boxes)
+boolToIntV :: Vector Bit -> Int
+boolToIntV v = V.foldl' (\acc b -> acc * 2 + if unBit b then 1 else 0) 0 v
 
--- Conversión de Int a Vector Bool de 4 bits (Necesario para S-Boxes)
-intToBits4V :: Int -> Vector Bool
-intToBits4V n = V.fromList [testBit n (3 - i) | i <- [0 .. 3]]
+-- Conversión de Int a Vector Bit de 4 bits (Necesario para S-Boxes)
+intToBits4V :: Int -> Vector Bit
+intToBits4V n = V.fromList [Bit (testBit n (3 - i)) | i <- [0 .. 3]]
 
--- XOR de dos vectores de bits
-vectorXor :: Vector Bool -> Vector Bool -> Vector Bool
-vectorXor = V.zipWith (/=)
+-- XOR de dos vectores de bits (Utiliza la instancia Bits (Vector Bit))
+vectorXor :: Vector Bit -> Vector Bit -> Vector Bit
+vectorXor = xor -- Más rápido que V.zipWith
 
 -- =========================================================================
 -- KEY SCHEDULE
@@ -211,10 +212,10 @@ prepareKey :: ByteString -> DESKey
 prepareKey bs =
   let keyBytes = BS.take 8 $ bs `BS.append` BS.replicate 8 0
       bitsList = map byteToBitsV (BS.unpack keyBytes)
-   in V.concat bitsList
+  in V.concat bitsList
 
 -- Generar las 16 subclaves
-generateSubkeys :: DESKey -> [Vector Bool]
+generateSubkeys :: DESKey -> [Vector Bit]
 generateSubkeys key = subkeys
   where
     key56 = permute pc1 key
@@ -234,11 +235,11 @@ generateSubkeys key = subkeys
 -- =========================================================================
 
 -- Función F (corazón de DES)
-fFunction :: Vector Bool -> Vector Bool -> Vector Bool
+fFunction :: Vector Bit -> Vector Bit -> Vector Bit
 fFunction rightHalf subkey = permute permutationTable afterSBoxes
   where
     expanded = permute expansionTable rightHalf
-    -- XOR eficiente usando V.zipWith
+    -- XOR eficiente usando la sobrecarga de Bits
     xored = vectorXor expanded subkey
     -- Dividir en 8 grupos de 6 bits
     groups = chunksOfV 6 xored
@@ -247,8 +248,8 @@ fFunction rightHalf subkey = permute permutationTable afterSBoxes
     indexedGroups = zip [0 ..] groups
     afterSBoxes = V.concat $ map (\(idx, bits) -> applySBox idx bits) indexedGroups
 
-    -- Aplicar S-box a un grupo de 6 bits (Vector Bool)
-    applySBox :: Int -> Vector Bool -> Vector Bool
+    -- Aplicar S-box a un grupo de 6 bits (Vector Bit)
+    applySBox :: Int -> Vector Bit -> Vector Bit
     applySBox sBoxIdx bits =
       let -- 1. Extraer fila (bits 0 y 5) y columna (bits 1 a 4)
           rowBits = V.fromList [bits V.! 0, bits V.! 5]
@@ -261,21 +262,21 @@ fFunction rightHalf subkey = permute permutationTable afterSBoxes
           -- 3. Calcular índice en el vector aplanado: SBoxIndex * 64 + Row * 16 + Col
           !idx = sBoxIdx * 64 + row * 16 + col
           !value = sBoxesV V.! idx -- Búsqueda rápida O(1)
-       in -- 4. Convertir el resultado (4 bits) a Vector Bool
-          intToBits4V value
+      in -- 4. Convertir el resultado (4 bits) a Vector Bit
+         intToBits4V value
 
 -- =========================================================================
 -- CIFRADO/DESCIFRADO DE BLOQUE
 -- =========================================================================
 
 -- Cifrar un bloque de 64 bits
-desEncryptBlock :: [Vector Bool] -> Vector Bool -> Vector Bool
+desEncryptBlock :: [Vector Bit] -> Vector Bit -> Vector Bit
 desEncryptBlock subkeys block = permute finalPermutation finalBlock
   where
     permuted = permute initialPermutation block
     (l0, r0) = V.splitAt 32 permuted
 
-    -- 16 rondas con Foldl sobre los subkeys (CORREGIDO: Usando foldl' de Data.List)
+    -- 16 rondas con Foldl sobre los subkeys (Usando foldl' de Data.List, como se corrigió)
     (lFinal, rFinal) = foldl' desRound (l0, r0) subkeys
 
     -- Intercambio final
@@ -283,12 +284,12 @@ desEncryptBlock subkeys block = permute finalPermutation finalBlock
 
     desRound (left, right) subkey =
       let fResult = fFunction right subkey
-          -- XOR de 32 bits, usando V.zipWith
+          -- XOR de 32 bits
           newRight = vectorXor left fResult
-       in (right, newRight)
+      in (right, newRight)
 
 -- Descifrar es lo mismo pero con subclaves en orden inverso
-desDecryptBlock :: [Vector Bool] -> Vector Bool -> Vector Bool
+desDecryptBlock :: [Vector Bit] -> Vector Bit -> Vector Bit
 desDecryptBlock subkeys block = permute finalPermutation finalBlock
   where
     permuted = permute initialPermutation block
@@ -302,9 +303,9 @@ desDecryptBlock subkeys block = permute finalPermutation finalBlock
 
     desRound (left, right) subkey =
       let fResult = fFunction right subkey
-          -- XOR de 32 bits, usando V.zipWith
+          -- XOR de 32 bits
           newRight = vectorXor left fResult
-       in (right, newRight)
+      in (right, newRight)
 
 -- =========================================================================
 -- FUNCIONES PRINCIPALES (ByteString I/O)
@@ -315,7 +316,7 @@ addPadding :: ByteString -> ByteString
 addPadding bs =
   let padLen = 8 - (BS.length bs `mod` 8)
       padding = BS.replicate padLen (fromIntegral padLen)
-   in bs `BS.append` padding
+  in bs `BS.append` padding
 
 -- Remover padding
 removePadding :: ByteString -> ByteString
@@ -325,7 +326,7 @@ removePadding bs =
     else
       let lastByte = BS.last bs
           padLen = fromIntegral lastByte
-       in if padLen > 0 && padLen <= 8
+      in if padLen > 0 && padLen <= 8
             then BS.take (BS.length bs - padLen) bs
             else bs
 
@@ -334,24 +335,24 @@ desEncrypt :: DESKey -> ByteString -> ByteString
 desEncrypt key plaintext =
   let subkeys = generateSubkeys key
       padded = addPadding plaintext
-      -- Convertir de ByteString a Vector Bool
+      -- Convertir de ByteString a Vector Bit
       allBits = V.concat $ map byteToBitsV (BS.unpack padded)
-      -- Dividir en bloques de 64 bits (Vector Bool)
+      -- Dividir en bloques de 64 bits (Vector Bit)
       blocks = chunksOfV 64 allBits
       -- Cifrar bloques
       encryptedBlocks = map (desEncryptBlock subkeys) blocks
       -- Concatenar y convertir de vuelta a ByteString
       allEncryptedBits = V.concat encryptedBlocks
       encryptedBytes = map bitsToWord8V (chunksOfV 8 allEncryptedBits)
-   in BS.pack encryptedBytes
+  in BS.pack encryptedBytes
 
 -- Descifrar ByteString completo
 desDecrypt :: DESKey -> ByteString -> ByteString
 desDecrypt key ciphertext =
   let subkeys = generateSubkeys key
-      -- Convertir de ByteString a Vector Bool
+      -- Convertir de ByteString a Vector Bit
       allBits = V.concat $ map byteToBitsV (BS.unpack ciphertext)
-      -- Dividir en bloques de 64 bits (Vector Bool)
+      -- Dividir en bloques de 64 bits (Vector Bit)
       blocks = chunksOfV 64 allBits
       -- Descifrar bloques
       decryptedBlocks = map (desDecryptBlock subkeys) blocks
@@ -359,4 +360,4 @@ desDecrypt key ciphertext =
       allDecryptedBits = V.concat decryptedBlocks
       decryptedBytes = map bitsToWord8V (chunksOfV 8 allDecryptedBits)
       decryptedBS = BS.pack decryptedBytes
-   in removePadding decryptedBS
+  in removePadding decryptedBS
