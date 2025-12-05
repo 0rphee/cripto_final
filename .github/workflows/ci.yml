@@ -16,7 +16,6 @@ jobs:
       # Permisos necesarios para escribir el tag y la release
       contents: write
     steps:
-      # 🔑 NUEVO PASO: Instalar dependencias del sistema para Alpine/GHC
       # Incluye nodejs y bash para que funcionen las Actions posteriores
       - name: Install system dependencies (Alpine)
         run: |
@@ -83,7 +82,7 @@ jobs:
           name: Commit Release - ${{ steps.create_tag.outputs.tag_name }}
           body: "Ejecutable compilado automáticamente en cada commit (${{ github.sha }})."
           draft: false
-          prerelease: true # Recomendado para releases por commit
+          prerelease: false # Recomendado para releases por commit
 
       - name: Upload executable (Internal Artifact)
         uses: actions/upload-artifact@v4
