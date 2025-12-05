@@ -1,14 +1,14 @@
-name: Build
-on:
-  push:
-    branches: ["main"]
-  pull_request:
+name: Build and Release
 
+on:
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/cache@v4
         with:
@@ -19,16 +19,42 @@ jobs:
           restore-keys: ${{ runner.os }}-cabal-
 
       - name: Install GHC
-        uses: haskell/actions/setup@v2
+        uses: haskell-actions/setup@v2
         with:
-          ghc-version: "9.10.3"
+          ghc-version: "9.10.1"
+          cabal-version: "3.14"
           enable-stack: false
+      - run: cabal update
 
-      - name: Build
-        run: cabal build
+      - name: Build (with Stripping)
+        run: cabal build --enable-executable-stripping
 
-      - name: Upload executable
+      - name: Find executable
+        id: findexe
+        run: |
+          # Encuentra el ejecutable 'cripto-final' y lo expone como salida.
+          EXE=$(find dist-newstyle -type f -name cripto-final -perm -111 | head -n 1)
+          if [ -z "$EXE" ]; then
+            echo "::error::Executable 'cripto-final' not found."
+            exit 1
+          fi
+          echo "exe=$EXE" >> "$GITHUB_OUTPUT"
+          echo "Ejecutable encontrado en: $EXE"
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          # El archivo a subir como asset de la Release
+          files: ${{ steps.findexe.outputs.exe }}
+          # Usa el nombre del tag como el nombre de la Release
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: "Ejecutable compilado de DES/DH para Linux (Ubuntu/x86_64)."
+          draft: false
+          prerelease: false
+
+      - name: Upload executable (Internal Artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: cripto-final
-          path: dist-newstyle/build/*/*/*/x/cripto-final/build/cripto-final/cripto-final
+          name: cripto-final-artifact
+          path: ${{ steps.findexe.outputs.exe }}
