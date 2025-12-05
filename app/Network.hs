@@ -18,11 +18,7 @@ import qualified Network.Socket as Socket
 import qualified Network.Socket.ByteString as SocketBS
 import qualified Protocol as P
 
--- ==========================================
--- Utilidades
--- ==========================================
-
--- Envia un mensaje precedido por su longitud (4 bytes)
+-- einviar mensaeje con  precedido por su longitud (4 bytes)
 sendMessage :: Socket.Socket -> P.Message -> IO ()
 sendMessage sock msg = do
   let serialized = P.serializeMessage msg
@@ -43,7 +39,7 @@ recvMessage sock = do
         then pure $ Left "Payload incompleto"
         else pure $ P.deserializeMessage payload
 
--- Recibe exactamente n bytes
+-- lectura de exactamente n bytes
 recvAll :: Socket.Socket -> Int -> IO ByteString
 recvAll sock n = go BS.empty
   where
@@ -53,10 +49,10 @@ recvAll sock n = go BS.empty
           chunk <- SocketBS.recv sock (n - BS.length acc)
 
           if BS.null chunk
-            then return acc -- Socket cerrado
+            then pure acc -- Socket cerrado
             else go (acc `BS.append` chunk)
 
--- Conversiones para el header de longitud (Big Endian)
+-- Conversiones para header de longitud (big endian)
 intToBytes :: Int -> ByteString
 intToBytes n = BS.pack [b3, b2, b1, b0]
   where
@@ -71,7 +67,7 @@ bytesToInt bs =
    in (b3 `shiftL` 24) .|. (b2 `shiftL` 16) .|. (b1 `shiftL` 8) .|. b0
 
 -- ==========================================
--- Lógica del Servidor
+-- Servidor
 -- ==========================================
 
 runServer :: String -> String -> Maybe FilePath -> IO ()
@@ -91,27 +87,23 @@ runServer host port mOutputFile = Socket.withSocketsDo $ do
 
 handleConnection :: Socket.Socket -> Maybe FilePath -> IO ()
 handleConnection conn mOutputFile = do
-  -- 1. Generar claves DH del servidor
+  -- Primero se generarn las claves DH del servidor
   putStrLn "[*] Generando parámetros Diffie-Hellman..."
   dhParams <- DH.generateDHParams
   (srvPriv, srvPub) <- DH.generateKeyPair dhParams
-
-  -- 2. Esperar ClientHello
+  -- A continuación se espera el ClientHello
   msg <- recvMessage conn
   case msg of
     Right (P.HandshakeMsgWrapper (P.ClientHello cliPub)) -> do
       putStrLn "[*] ClientHello recibido."
-
-      -- 3. Enviar ServerHello
+      -- Se envía ServerHello
       putStrLn "[*] Enviando ServerHello..."
       sendMessage conn (P.HandshakeMsgWrapper (P.ServerHello srvPub))
-
-      -- 4. Calcular secreto compartido
+      -- Se calcula secreto compartido
       let secret = DH.computeSharedSecret dhParams srvPriv cliPub
       let desKey = integerToDESKey secret
       putStrLn $ "[*] Handshake completado. Secreto compartido establecido."
-
-      -- 5. Recibir datos cifrados
+      -- Ahora se comienza a recibir datos cifrados
       receiveLoop conn desKey BS.empty
     Right _ -> putStrLn "[!] Error: Se esperaba ClientHello"
     Left err -> putStrLn $ "[!] Error de red: " ++ err
@@ -139,31 +131,31 @@ handleConnection conn mOutputFile = do
         putStrLn $ "[*] Archivo guardado exitosamente en: " ++ path
 
 -- ==========================================
--- Lógica del Cliente
+-- Cliente
 -- ==========================================
 
-runClient :: String -> String -> FilePath -> IO () -- Asumiendo que ClientOpts se exporta o define aquí, o pasa los campos
+runClient :: String -> String -> FilePath -> IO ()
 runClient host port inputPath = Socket.withSocketsDo $ do
   addr <- resolve host port
 
   bracket (openClient addr) Socket.close $ \sock -> do
     putStrLn $ "[*] Conectado a " ++ host ++ ":" ++ port
-    -- 1. Generar claves DH del cliente
+    -- generación de las claves DH del cliente
     dhParams <- DH.generateDHParams
     (cliPriv, cliPub) <- DH.generateKeyPair dhParams
-    -- 2. Enviar ClientHello
+    -- Envio de ClientHello
     putStrLn "[*] Enviando ClientHello..."
     sendMessage sock (P.HandshakeMsgWrapper (P.ClientHello cliPub))
-    -- 3. Esperar ServerHello
+    -- Espera de ServerHello
     msg <- recvMessage sock
     case msg of
       Right (P.HandshakeMsgWrapper (P.ServerHello srvPub)) -> do
         putStrLn "[*] ServerHello recibido."
-        -- 4. Calcular secreto compartido y clave DES
+        -- Calcular secreto compartido y clave DES
         let secret = DH.computeSharedSecret dhParams cliPriv srvPub
         let desKey = integerToDESKey secret
         putStrLn "[*] Handshake completado. Iniciando transmisión cifrada..."
-        -- 5. Leer, cifrar y enviar archivo
+        -- Lectura y cifrado de archivo
         content <- BS.readFile inputPath
         putStrLn $ "[*] Leyendo archivo (" ++ show (BS.length content) ++ " bytes)"
         let encrypted = DES.desEncrypt desKey content
@@ -174,7 +166,6 @@ runClient host port inputPath = Socket.withSocketsDo $ do
       Right _ -> putStrLn "[!] Error: Se esperaba ServerHello"
       Left err -> putStrLn $ "[!] Error de red: " ++ err
 
--- Helpers de conexión
 resolve :: String -> String -> IO Socket.AddrInfo
 resolve host port = do
   let hints = Socket.defaultHints {Socket.addrSocketType = Socket.Stream}

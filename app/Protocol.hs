@@ -24,18 +24,18 @@ instance Binary.Binary HandshakeMsg
 
 -- Mensajes generales del protocolo
 data Message
-  = HandshakeMsgWrapper HandshakeMsg -- Envolvemos el handshake
+  = HandshakeMsgWrapper HandshakeMsg -- el handshake
   | EncryptedData ByteString -- Datos cifrados con DES
-  | EndOfTransmission -- Indica fin de archivo
+  | EndOfTransmission -- Indica fin de transmisión
   deriving (Generic, Show)
 
 instance Binary.Binary Message
 
--- Serialización
+-- Serialización de mensaje para enviar por socket
 serializeMessage :: Message -> ByteString
 serializeMessage = BL.toStrict . Binary.encode
 
--- Deserialización
+-- Deserialización de mensajer para enviar pors socket
 deserializeMessage :: ByteString -> Either String Message
 deserializeMessage bs =
   case Binary.decodeOrFail (BL.fromStrict bs) of

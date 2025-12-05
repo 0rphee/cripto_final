@@ -56,8 +56,6 @@ jobs:
       - name: Create and Push Commit Tag
         id: create_tag
         run: |
-          # Usa el SHA corto del commit (primeros 7 caracteres) para asegurar unicidad.
-          # Ejemplo: 'commit-1a2b3c4'
           TAG_NAME="commit-${GITHUB_SHA::7}"
           echo "Creando tag único para el commit: $TAG_NAME"
           
@@ -78,7 +76,7 @@ jobs:
           name: Commit Release - ${{ steps.create_tag.outputs.tag_name }}
           body: "Ejecutable compilado automáticamente en cada commit (${{ github.sha }})."
           draft: false
-          prerelease: false # Recomendado para releases por commit
+          prerelease: false
 
       - name: Upload executable (Internal Artifact)
         uses: actions/upload-artifact@v4

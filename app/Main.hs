@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Programa principal con CLI usando subcomandos
+-- Programa principal
 module Main (main) where
 
 import qualified Network
@@ -26,7 +26,6 @@ data ClientOpts = ClientOpts
   , clientInput :: FilePath
   }
 
--- Parser para el comando servidor
 serverCommand :: Parser Command
 serverCommand =
   fmap Server $
@@ -104,12 +103,11 @@ opts =
   info
     (commandParser <**> helper)
     ( fullDesc
-        <> progDesc "Canal cifrado seguro con DES y Diffie-Hellman"
-        <> header "cripto-final - transferencia segura de archivos"
+        <> header "cripto-final - transferencia de archivos"
         <> footer
           "Ejemplos:\n\
           \  cripto-final server -h 0.0.0.0 -p 8888 -o recibido.txt\n\
-          \  cripto-final client -h 192.168.1.100 -p 8888 -i archivo.dat"
+          \  cripto-final client -h 192.168.1.100 -p 8888 -i archivo.txt"
     )
 
 -- Main
@@ -117,7 +115,7 @@ main :: IO ()
 main = do
   commandInfo <- execParser opts
   putStrLn "=========================================="
-  putStrLn "  Secure Channel - DES + Diffie-Hellman"
+  putStrLn "   CRIPTO-FINAL - DES + Diffie-Hellman    "
   putStrLn "=========================================="
   putStrLn ""
   case commandInfo of
@@ -143,5 +141,4 @@ main = do
         clientOpts.clientHost
         clientOpts.clientPort
         clientOpts.clientInput
-
   putStrLn "\n[+] Operación finalizada"
