@@ -19,7 +19,7 @@ import qualified Network.Socket.ByteString as SocketBS
 import qualified Protocol as P
 
 -- ==========================================
--- Utilidades de Red (Framing)
+-- Utilidades
 -- ==========================================
 
 -- Envia un mensaje precedido por su longitud (4 bytes)

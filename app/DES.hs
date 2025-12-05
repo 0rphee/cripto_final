@@ -12,20 +12,18 @@ module DES
   )
 where
 
--- Necesario para foldl' sobre listas de subclaves
-import Data.Bit (Bit (..), unBit) -- USANDO DATA.BIT
+import Data.Bit (Bit (..), unBit)
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as V
 import Data.Word (Word8)
-
--- La clave DES ahora es un Vector Unboxed de Bit (más eficiente en espacio)
+import Control.Parallel.Strategies (rseq, parMap)
 type DESKey = Vector Bit
 
 -- =========================================================================
--- TABLAS (Permutaciones y S-Boxes) - Ahora son Vector Int
+-- TABLAS (Permutaciones y S-Boxes)
 -- =========================================================================
 
 -- Permutación inicial (IP)
@@ -162,7 +160,6 @@ shiftSchedule :: [Int]
 shiftSchedule = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1]
 
 -- =========================================================================
--- FUNCIONES AUXILIARES DE VECTOR
 -- =========================================================================
 
 -- Convertir byte a Vector de bits
@@ -175,7 +172,7 @@ bitsToWord8V bits = V.foldl' setBitAt 0 (V.zip (V.fromList [7, 6 .. 0]) bits)
   where
     setBitAt w (i, b) = if unBit b then setBit w i else w
 
--- Aplicar permutación: selecciona bits usando indexación rápida V.!
+-- Aplicar permutación
 permute :: Vector Int -> Vector Bit -> Vector Bit
 permute table bits = V.map (\i -> bits V.! (i - 1)) table
 
@@ -233,8 +230,6 @@ generateSubkeys key = subkeys
 -- =========================================================================
 -- FUNCIÓN F (Feistel Function)
 -- =========================================================================
-
--- Función F (corazón de DES)
 fFunction :: Vector Bit -> Vector Bit -> Vector Bit
 fFunction rightHalf subkey = permute permutationTable afterSBoxes
   where
@@ -254,14 +249,13 @@ fFunction rightHalf subkey = permute permutationTable afterSBoxes
       let -- 1. Extraer fila (bits 0 y 5) y columna (bits 1 a 4)
           rowBits = V.fromList [bits V.! 0, bits V.! 5]
           colBits = V.take 4 $ V.drop 1 bits
-
           -- 2. Conversión a Int para lookup
           row = boolToIntV rowBits -- 2 bits -> 0-3
           col = boolToIntV colBits -- 4 bits -> 0-15
 
           -- 3. Calcular índice en el vector aplanado: SBoxIndex * 64 + Row * 16 + Col
           !idx = sBoxIdx * 64 + row * 16 + col
-          !value = sBoxesV V.! idx -- Búsqueda rápida O(1)
+          !value = sBoxesV V.! idx
       in -- 4. Convertir el resultado (4 bits) a Vector Bit
          intToBits4V value
 
@@ -307,10 +301,6 @@ desDecryptBlock subkeys block = permute finalPermutation finalBlock
           newRight = vectorXor left fResult
       in (right, newRight)
 
--- =========================================================================
--- FUNCIONES PRINCIPALES (ByteString I/O)
--- =========================================================================
-
 -- Padding PKCS#7
 addPadding :: ByteString -> ByteString
 addPadding bs =
@@ -339,8 +329,7 @@ desEncrypt key plaintext =
       allBits = V.concat $ map byteToBitsV (BS.unpack padded)
       -- Dividir en bloques de 64 bits (Vector Bit)
       blocks = chunksOfV 64 allBits
-      -- Cifrar bloques
-      encryptedBlocks = map (desEncryptBlock subkeys) blocks
+      encryptedBlocks = parMap rseq (desEncryptBlock subkeys) blocks
       -- Concatenar y convertir de vuelta a ByteString
       allEncryptedBits = V.concat encryptedBlocks
       encryptedBytes = map bitsToWord8V (chunksOfV 8 allEncryptedBits)
@@ -354,8 +343,7 @@ desDecrypt key ciphertext =
       allBits = V.concat $ map byteToBitsV (BS.unpack ciphertext)
       -- Dividir en bloques de 64 bits (Vector Bit)
       blocks = chunksOfV 64 allBits
-      -- Descifrar bloques
-      decryptedBlocks = map (desDecryptBlock subkeys) blocks
+      decryptedBlocks = parMap rseq (desDecryptBlock subkeys) blocks
       -- Concatenar y convertir de vuelta a ByteString
       allDecryptedBits = V.concat decryptedBlocks
       decryptedBytes = map bitsToWord8V (chunksOfV 8 allDecryptedBits)

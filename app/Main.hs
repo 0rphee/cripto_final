@@ -4,7 +4,6 @@
 -- | Programa principal con CLI usando subcomandos
 module Main (main) where
 
-import Data.Maybe (fromMaybe)
 import qualified Network
 import Options.Applicative
 
