@@ -2,10 +2,8 @@ name: Build and Release
 
 on:
   push:
-    # 🔑 CAMBIO 1: Disparar en cada push a la rama 'main'
     branches:
       - "main"
-  # Se elimina el trigger de tags, ya que ahora generamos el tag automáticamente
   workflow_dispatch:
 
 jobs:
@@ -16,7 +14,6 @@ jobs:
       # Permisos necesarios para escribir el tag y la release
       contents: write
     steps:
-      # 🔑 NUEVO PASO: Instalar dependencias del sistema para Alpine/GHC
       # Incluye nodejs y bash para que funcionen las Actions posteriores
       - name: Install system dependencies (Alpine)
         run: |
@@ -56,7 +53,6 @@ jobs:
           echo "Ejecutable encontrado en: $EXE"
 
       # Crea y sube un tag único basado en el SHA corto del commit.
-      # Esto permite que la acción de Release posterior funcione correctamente.
       - name: Create and Push Commit Tag
         id: create_tag
         run: |
@@ -66,7 +62,6 @@ jobs:
           echo "Creando tag único para el commit: $TAG_NAME"
           
           # Crear el tag local y subirlo al repositorio
-          # Nota: git config puede ser necesario en un contenedor fresco si git se queja
           git config --global --add safe.directory '*'
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
@@ -83,7 +78,7 @@ jobs:
           name: Commit Release - ${{ steps.create_tag.outputs.tag_name }}
           body: "Ejecutable compilado automáticamente en cada commit (${{ github.sha }})."
           draft: false
-          prerelease: true # Recomendado para releases por commit
+          prerelease: false # Recomendado para releases por commit
 
       - name: Upload executable (Internal Artifact)
         uses: actions/upload-artifact@v4
