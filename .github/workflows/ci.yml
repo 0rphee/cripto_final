@@ -41,6 +41,7 @@ jobs:
           ln -sf $(which node) /__e/node20_alpine/bin/node
           ln -sf $(which npm) /__e/node20_alpine/bin/npm
           ln -sf $(which npx) /__e/node20_alpine/bin/npx
+
       - uses: actions/checkout@v6
 
       - uses: actions/cache@v4
@@ -48,8 +49,8 @@ jobs:
           path: |
             ~/.cabal
             dist-newstyle
-          key: ${{ runner.os }}-cabal-${{ hashFiles('**/*.cabal') }}-${{ matrix.arch }}
-          restore-keys: ${{ runner.os }}-cabal-
+          key: ${{ runner.os }}-${{ matrix.arch }}-cabal-${{ hashFiles('**/*.cabal') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.arch }}-cabal-
 
       - name: Install GHC
         uses: haskell/ghcup-setup@v1
@@ -79,7 +80,7 @@ jobs:
       - name: Upload executable (Internal Artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: cripto-final-artifact-${{ matrix.arch }}
+          name: cripto-final-${{ matrix.arch }}
           path: ${{ steps.findexe.outputs.exe }}
 
   release:
