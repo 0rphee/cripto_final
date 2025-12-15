@@ -9,16 +9,38 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: alpine:3.19
+    container:
+      image: ${{ matrix.arch == 'i386' && 'i386/alpine:3.19' || 'alpine:3.19' }}
+      volumes:
+        - /tmp:/__e/node24_alpine
+        - /tmp:/__e/node20_alpine
     permissions:
       # Permisos necesarios para escribir el tag y la release
       contents: write
+    strategy:
+      matrix:
+        arch: [x86_64, i386]
     steps:
       # Incluye nodejs y bash para que funcionen las Actions posteriores
       - name: Install system dependencies (Alpine)
         run: |
           apk update
           apk add curl gcc g++ git gmp-dev libc-dev libffi-dev make musl-dev ncurses-dev perl tar xz bash
+
+      - name: Fix checkout and upload-artifact
+        # if: matrix.arch == 'i386'
+        run: |
+          apk add nodejs npm
+
+          mkdir -p /__e/node24_alpine/bin
+          ln -sf $(which node) /__e/node24_alpine/bin/node
+          ln -sf $(which npm) /__e/node24_alpine/bin/npm
+          ln -sf $(which npx) /__e/node24_alpine/bin/npx
+
+          mkdir -p /__e/node20_alpine/bin
+          ln -sf $(which node) /__e/node20_alpine/bin/node
+          ln -sf $(which npm) /__e/node20_alpine/bin/npm
+          ln -sf $(which npx) /__e/node20_alpine/bin/npx
       - uses: actions/checkout@v6
 
       - uses: actions/cache@v4
@@ -26,15 +48,15 @@ jobs:
           path: |
             ~/.cabal
             dist-newstyle
-          key: ${{ runner.os }}-cabal-${{ hashFiles('**/*.cabal') }}
+          key: ${{ runner.os }}-cabal-${{ hashFiles('**/*.cabal') }}-${{ matrix.arch }}
           restore-keys: ${{ runner.os }}-cabal-
 
       - name: Install GHC
-        uses: haskell-actions/setup@v2
+        uses: haskell/ghcup-setup@v1
         with:
-          ghc-version: "9.10.1"
-          cabal-version: "3.14"
-          enable-stack: false
+          ghc: "9.10.1"
+          cabal: "3.14"
+
       - run: cabal update
 
       - name: Build (Static Link & Stripping)
@@ -49,12 +71,15 @@ jobs:
             echo "::error::Executable 'cripto-final' not found."
             exit 1
           fi
-          echo "exe=$EXE" >> "$GITHUB_OUTPUT"
-          echo "Ejecutable encontrado en: $EXE"
+          OUT="cripto-final-${{ matrix.arch }}"
+          cp "$EXE" "$OUT"
+          echo "exe=$OUT" >> "$GITHUB_OUTPUT"
+          echo "Ejecutable encontrado en: $OUT"
 
       # Crea y sube un tag único basado en el SHA corto del commit.
       - name: Create and Push Commit Tag
         id: create_tag
+        if: matrix.arch == 'x86_64'
         run: |
           TAG_NAME="commit-${GITHUB_SHA::7}"
           echo "Creando tag único para el commit: $TAG_NAME"
@@ -71,7 +96,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # El archivo a subir como asset de la Release
-          files: ${{ steps.findexe.outputs.exe }}
+          files: cripto-final-*
           tag_name: ${{ steps.create_tag.outputs.tag_name }}
           name: Commit Release - ${{ steps.create_tag.outputs.tag_name }}
           body: "Ejecutable compilado automáticamente en cada commit (${{ github.sha }})."
@@ -81,5 +106,5 @@ jobs:
       - name: Upload executable (Internal Artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: cripto-final-artifact
+          name: cripto-final-artifact-${{ matrix.arch }}
           path: ${{ steps.findexe.outputs.exe }}
