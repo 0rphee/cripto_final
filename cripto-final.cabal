@@ -1,38 +1,54 @@
-cabal-version:      3.0
-name:               cripto-final
-version:            0.1.0.0
+cabal-version: 3.0
+name: cripto-final
+version: 0.1.0.0
 -- synopsis:
 -- description:
-license:            BSD-3-Clause
-license-file:       LICENSE
-author:             0rphee
-maintainer:         0rph3e@proton.me
+license: BSD-3-Clause
+license-file: LICENSE
+author: 0rphee
+maintainer: 0rph3e@proton.me
 -- copyright:
-build-type:         Simple
-extra-doc-files:    CHANGELOG.md
--- extra-source-files:
+build-type: Simple
+extra-doc-files: CHANGELOG.md
 
+-- extra-source-files:
 common warnings
-    ghc-options: -Wall
+  ghc-options: -Wall
+
+flag memory-profiling
+  description: Turn on GHC and RTS options for memory profiling.
+  default: False
+  manual: True
 
 executable cripto-final
-    import:           warnings
-    main-is:          Main.hs
-    other-modules:    DES
-                    , DiffieHellman
-                    , Network
-                    , Protocol
-    -- other-extensions:
-    build-depends:    base ^>=4.20
-                    , bytestring
-                    , bitvec
-                    , vector
-                    , optparse-applicative
-                    , network
-                    , binary
-                    , random
-                    , text
-                    , parallel
-    hs-source-dirs:   app
-    default-language: Haskell2010
-    ghc-options:      -Wall -threaded
+  import: warnings
+  main-is: Main.hs
+  other-modules:
+    DES
+    DiffieHellman
+    Network
+    Protocol
+
+  -- other-extensions:
+  build-depends:
+    base ^>=4.20,
+    binary,
+    bitvec,
+    bytestring,
+    network,
+    optparse-applicative,
+    parallel,
+    random,
+    text,
+    vector,
+
+  hs-source-dirs: app
+  default-language: Haskell2010
+  ghc-options:
+    -Wall
+    -threaded
+
+  if flag(memory-profiling)
+    ghc-options:
+      -finfo-table-map
+      "-with-rtsopts=-N -T  -l"
