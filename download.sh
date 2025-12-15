@@ -44,7 +44,7 @@ DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$ASSET"
 TMPFILE="$(mktemp)"
 
 echo "Descargando binario..."
-if ! curl -sL "$DOWNLOAD_URL" --output "$TMPFILE"; then
+if ! curl -L "$DOWNLOAD_URL" --output "$TMPFILE"; then
     echo "ERROR: No se pudo descargar el binario."
     exit 1
 fi
